@@ -1,0 +1,239 @@
+----------------------------------Logging into mysql-----------------------------------------
+[cloudera@quickstart ~]$ mysql -u root -pcloudera
+
+
+-----------------------------------Creating table in mysql-------------------------------------
+mysql> create table nyc_job(
+job_id int,
+agency varchar(65000),
+posting_type varchar(65000),
+no_of_positions int,
+buisness_title varchar(65000),
+civil_service_titile varchar(65000),
+title_code varchar(65000),
+level varchar(65000),
+job_category varchar(65000),
+ft_or_pt varchar(65000),
+salary_range_from double,
+salary_range_to double,
+salary_frequency varchar(65000),
+work_location varchar(65000),
+work_unit varchar(65000),
+job_description varchar(65000),
+min_qual_req varchar(65000),
+preferred_skills varchar(65000),
+additional_info varchar(65000),
+to_apply varchar(65000),
+hours varchar(65000),
+work_loc_1 varchar(65000),
+recruitment_contact varchar(65000),
+residency_req varchar(65000),
+posting_date varchar(65000),
+post_untill varchar(65000),
+psoting_updated varchar(65000),
+process_date varchar(65000));
+
+----------------------------------------LOAD DATA INTO MYSQL---------------------------------
+LOAD DATA INFILE '/home/cloudera/Desktop/Project/nyc_job_pipe.txt' 
+INTO TABLE nyc_job 
+FIELDS TERMINATED BY '|' 
+LINES TERMINATED BY '\n';
+
+#fields are seperated by '|' thus fields terminated by '|'
+
+-----------------------------------Creating Database in HIVE----------------------------------
+hive> create database job_vacancy;
+OK
+hive> use job_vacancy;
+OK 
+-----------------------------------Creating Table in HIVE--------------------------------------
+hive> create table nyc_job(
+job_id int,
+agency string,
+posting_type string,
+no_of_positions int,
+buisness_title string,
+civil_service_titile string,
+title_code string,
+level string,
+job_category string,
+ft_or_pt string,
+salary_range_from double,
+salary_range_to double,
+salary_frequency string,
+work_location string,
+work_unit string,
+job_description string,
+min_qual_req string,
+preferred_skills string,
+additional_info string,
+to_apply string,
+hours string,
+work_loc_1 string,
+recruitment_contact string,
+residency_req string,
+posting_date string,
+post_untill string,
+psoting_updated string,
+process_date string);
+
+-------------------------------------Importing data from mysql into Hadoop----------------------
+
+sqoop import --connect \
+jdbc:mysql://127.0.0.1:3306/project \
+ --username root --password cloudera \
+ --table nyc_job \
+ --hive-import --hive-table job_vacancy.nyc_job \
+ --m 1
+
+--------------------------------------Handling NULL Values in Hive Database after Importing from MySql using SQOOP--------------------------------
+insert OVERWRITE table job_vacancy.nyc_job
+SELECT  job_id ,agency ,posting_type ,no_of_positions , buisness_title ,civil_service_titile , title_code, level, job_category,
+CASE WHEN LENGTH(ft_or_pt) > 0 THEN ft_or_pt ELSE 'NA' END AS SO ,
+salary_range_from ,salary_range_to ,salary_frequency , work_location, work_unit, job_description,
+CASE WHEN LENGTH(min_qual_req) > 0 THEN min_qual_req  ELSE 'NA' END AS SO,
+CASE WHEN LENGTH(preferred_skills) > 0 THEN preferred_skills ELSE 'NA' END AS SO,
+CASE WHEN LENGTH(additional_info) > 0 THEN additional_info ELSE 'NA' END AS SO,
+to_apply,
+CASE WHEN LENGTH(hours) > 0 THEN hours ELSE 'NA' END AS SO,
+CASE WHEN LENGTH(work_loc_1) > 0 THEN work_loc_1 ELSE 'NA' END AS SO, 
+CASE WHEN LENGTH(recruitment_contact) > 0 THEN recruitment_contact ELSE 'NA' END AS SO,
+residency_req, posting_date, 
+CASE WHEN LENGTH(post_untill) > 0 THEN post_untill ELSE 'NA' END AS SO,
+psoting_updated,process_date
+FROM job_vacancy.nyc_job
+WHERE ft_or_pt IS NOT NULL AND min_qual_req IS NOT NULL AND preferred_skills IS NOT NULL AND additional_info IS NOT NULL AND hours IS NOT NULL AND work_loc_1 IS NOT NULL AND recruitment_contact IS NOT NULL AND post_untill IS NOT NULL ;
+
+-------------------------------------------------Connecting Hive Databse to Beeline----------------------------------------- 
+
+[cloudera@quickstart ~]$ beeline
+Beeline version 1.1.0-cdh5.13.0 by Apache Hive
+beeline> !connect jdbc:hive2://localhost:10000/job_vacancy
+
+-------------------------------------------------Creating hive table using serde properties---------------------------------
+\*In this we are creating a table using serde properties in hive and loading data from jobs.csv file*/
+
+create table nyc_job_serde(
+job_id int,
+agency string,
+posting_type string,
+no_of_positions int,
+buisness_title string,
+civil_service_titile string,
+title_code string,
+level string,
+job_category string,
+ft_or_pt string,
+salary_range_from double,
+salary_range_to double,
+salary_frequency string,
+work_location string,
+work_unit string,
+job_description string,
+min_qual_req string,
+preferred_skills string,
+additional_info string,
+to_apply string,
+hours string,
+work_loc_1 string,
+recruitment_contact string,
+residency_req string,
+posting_date string,
+post_untill string,
+psoting_updated string,
+process_date string)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+   "separatorChar" = "\t",
+   "quoteChar"     = "\""
+);
+
+load data local inpath '/home/cloudera/Desktop/Project/jobs.csv' overwrite into table nyc_job_serde;
+
+---------------------------------------------------------SPARK----------------------------------------------------------------------------------
+
+//to connect hive database with spark (run this command in UNIX)
+
+cloudera> sudo cp /etc/hive/conf.dist/hive-site.xml /etc/spark/conf
+
+
+// load data from file in RDD
+
+scala> val job = sc.textFile("file:///home/cloudera/Desktop/Project/test")
+scala> job.foreach(println)
+
+// split a line in 4 fields
+
+scala> val data = job.map(rec => rec.split("@"))
+scala> data.foreach(println)
+scala> data.collect()
+scala> data.count()
+
+// define schema
+
+scala> val fields = "job_id,agency,posting_type,no_of_positions,buisness_title,civil_service_titile,title_code,level,job_category,ft_or_pt,salary_range_from,salary_range_to,salary_frequency,work_location,work_unit,job_description,min_qual_req,preferred_skills,additional_info,to_apply,hours,work_loc_1,recruitment_contact,residency_req,posting_date,post_untill,psoting_updated,process_date"
+scala> val schema = fields.split(",")
+
+// import libraries to define schema, fields and datatypes
+
+scala> import org.apache.spark.sql.types.{StructType, StructField,IntegerType,DoubleType,StringType};
+scala> import org.apache.spark.sql.Row;
+scala> val schema = StructType(fields.split(",").map(fieldName => StructField(fieldName, StringType, true)))
+
+// Cast RDD data in ROW format
+
+scala> val records = data.map(rec => Row(rec(0),rec(1), rec(2), rec(3),rec(4),rec(5),rec(6),rec(7),rec(8),rec(9),rec(10),rec(11),rec(12),rec(13),rec(14),rec(15),rec(16),rec(17),rec(18),rec(19),rec(20),rec(21),rec(22),rec(23),rec(24),rec(25),rec(26),rec(27)));
+
+// Display ROW data
+
+scala> records.collect()
+
+// Create dataframe and load data in Dataframe from ROW
+
+scala> val jobDF = sqlContext.createDataFrame(records, schema)
+
+// Display the schema
+
+scala> jobDF.printSchema()
+
+// Display the data in table format
+
+scala> jobDF.show()
+
+// Display data in Array format
+
+scala> jobDF.collect()
+
+// create temporary table on Dataframe
+
+scala> jobDF.registerTempTable("nyc_job")
+
+// run some sample SQL commands to understand how Spark SQL works with Dataframe
+
+scala> val query1 = sqlContext.sql("SELECT * FROM nyc_job limit 1")
+
+scala> query1.show()
+
+//to reflect this dataframe into hive 
+
+scala> sqlContext.sql("Create database job_vacancy1")
+scala> jobDF.write.saveAsTable("job_vacancy1.nyc_job")
+
+//now login into hive and set database in use job_vacancy1 and type command show tables;
+
+----------------------------------------------------------------------Performing queries on spark---------------------------------------------------------------
+
+Q1. Create partitions based on Agency and print 1 record where agency='DEPARTMENT OF PROBATION'.
+Ans1. scala> val query = sqlContext.sql("Create table job_vacancy1.nyc_job_agency_partition(job_id string,posting_type string,no_of_positions string,buisness_title string,civil_service_titile string,title_code string,level string,job_category string,ft_or_pt string,salary_range_from string,salary_range_to string,salary_frequency string,work_location string,work_unit string,job_description string,min_qual_req string,preferred_skills string,additional_info string,to_apply string,hours string,work_loc_1 string,recruitment_contact string,residency_req string,posting_date string,post_untill string,psoting_updated string,process_date string) partitioned by (agency STRING) row format delimited fields terminated by '@' stored as textfile")
+      scala> val query = sqlContext.sql("set hive.exec.dynamic.partition.mode=nonstrict")
+      scala> val query = sqlContext.sql("insert into job_vacancy1.nyc_job_agency_partition partition(agency) select job_id ,posting_type ,no_of_positions,buisness_title ,civil_service_titile ,title_code ,level ,job_category ,ft_or_pt ,salary_range_from ,salary_range_to ,salary_frequency ,work_location ,work_unit ,job_description ,min_qual_req ,preferred_skills ,additional_info ,to_apply ,hours ,work_loc_1 ,recruitment_contact ,residency_req ,posting_date ,post_untill ,psoting_updated ,process_date, agency from job_vacancy1.nyc_job distribute by agency")
+      scala> val query = sqlContext.sql("select * from job_vacancy1.nyc_job_agency_partition where agency='DEPARTMENT OF PROBATION' limit 1")
+      scala> query.show()
+
+Q2. Determine number of job postings in agency='NYC HOUSING AUTHORITY'.
+Ans2. scala> val query = sqlContext.sql("select distinct(job_id),agency,no_of_positions from job_vacancy1.nyc_job_agency_partition where agency='NYC HOUSING AUTHORITY'") 
+      scala> query.show()
+
+
+
+
